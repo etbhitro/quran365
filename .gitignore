@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# Secrets
+.env
+
+# Generated data (создаётся скриптом scripts/build_plan.py)
+data/quran.json
+data/plan.json
+
+# Локальная база прогресса
+data/progress.db
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
