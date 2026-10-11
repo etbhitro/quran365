@@ -38,24 +38,59 @@ def fetch_edition(edition: str) -> dict:
     return payload["data"]
 
 
-def make_plan(ayat_list: list[dict], days: int) -> list[dict]:
-    """Делит список аятов на `days` почти равных подряд идущих частей.
+def _sura_end_indices(ayat_list: list[dict]) -> list[int]:
+    """Глобальные индексы аятов, которыми ЗАКАНЧИВАЮТСЯ суры."""
+    ends: list[int] = []
+    total = len(ayat_list)
+    for i, a in enumerate(ayat_list):
+        is_last = i + 1 == total or ayat_list[i + 1]["surah"] != a["surah"]
+        if is_last:
+            ends.append(a["index"])
+    return ends
 
-    Первые `total % days` дней получают на один аят больше, поэтому разница
-    между самым большим и самым маленьким днём — не более одного аята.
+
+def make_plan(ayat_list: list[dict], days: int) -> list[dict]:
+    """Делит аяты на `days` подряд идущих частей, стараясь не разрывать суры.
+
+    Идея: нужная граница дня — около k·total/days-го аята. Если рядом (в пределах
+    примерно половины дневной нормы) есть конец суры, двигаем границу туда. Так
+    короткие суры целиком попадают в один день; большие суры (длиннее дневной
+    нормы) всё равно делятся — но разрыв приходится внутри одной суры, а не между
+    разными. Размер дня при этом плавает, но остаётся близким к среднему.
     """
     total = len(ayat_list)
     if days < 1 or days > total:
         raise ValueError(f"days должно быть в диапазоне 1..{total}, получено {days}")
 
-    base = total // days
-    extra = total % days
+    per_day = total / days
+    window = max(1, round(per_day / 2))  # насколько можно подвинуть границу к сура
+
+    # Границы-кандидаты: концы сур (кроме самого последнего аята всего Корана).
+    boundaries = [e for e in _sura_end_indices(ayat_list) if e < total]
+
+    cuts: list[int] = []  # глобальный индекс, которым заканчивается каждый день
+    prev = 0
+    for k in range(1, days):
+        ideal = round(k * per_day)
+        # Ближайший конец суры в пределах окна, строго после прошлой границы.
+        best = None
+        for b in boundaries:
+            if b <= prev or b >= total:
+                continue
+            if abs(b - ideal) <= window and (best is None or abs(b - ideal) < abs(best - ideal)):
+                best = b
+        cut = best if best is not None else ideal
+        # Гарантируем монотонность и чтобы на оставшиеся дни хватило аятов.
+        cut = max(cut, prev + 1)
+        cut = min(cut, total - (days - k))
+        cuts.append(cut)
+        prev = cut
+    cuts.append(total)  # последний день заканчивается на последнем аяте
+
     plan: list[dict] = []
-    cursor = 0
-    for day in range(1, days + 1):
-        count = base + (1 if day <= extra else 0)
-        chunk = ayat_list[cursor : cursor + count]
-        cursor += count
+    start = 1
+    for day, end in enumerate(cuts, start=1):
+        chunk = ayat_list[start - 1 : end]
         first, last = chunk[0], chunk[-1]
         plan.append(
             {
@@ -66,6 +101,7 @@ def make_plan(ayat_list: list[dict], days: int) -> list[dict]:
                 "label": _label(first, last),
             }
         )
+        start = end + 1
     return plan
 
 

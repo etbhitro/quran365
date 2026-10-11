@@ -13,8 +13,6 @@ import difflib
 import re
 from dataclasses import dataclass
 
-from openai import OpenAI
-
 from .config import OPENAI_API_KEY, WHISPER_MODEL
 
 # --- Нормализация арабского текста -----------------------------------------
@@ -98,6 +96,8 @@ def transcribe(audio_path: str) -> str:
     """Распознаёт арабскую речь из файла и возвращает текст."""
     if not OPENAI_API_KEY:
         raise RuntimeError("Не задан OPENAI_API_KEY — распознавание недоступно.")
+    from openai import OpenAI  # ленивый импорт: нужен только когда включено аудио
+
     client = OpenAI(api_key=OPENAI_API_KEY)
     with open(audio_path, "rb") as f:
         result = client.audio.transcriptions.create(
